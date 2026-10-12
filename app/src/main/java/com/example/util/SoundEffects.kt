@@ -3,6 +3,7 @@ package com.example.util
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -11,6 +12,7 @@ import kotlin.math.sin
 
 object SoundEffects {
 
+    private const val TAG = "SoundEffects"
     var isSoundEnabled: Boolean = true
 
     private val audioScope = CoroutineScope(Dispatchers.Default)
@@ -95,7 +97,6 @@ object SoundEffects {
 
         for (i in 0 until numSamples) {
             val time = i.toDouble() / sampleRate
-            // Apply quick envelope to prevent clicking
             val envelope = when {
                 i < numSamples * 0.1f -> i / (numSamples * 0.1f)
                 i > numSamples * 0.8f -> (numSamples - i) / (numSamples * 0.2f)
@@ -132,11 +133,18 @@ object SoundEffects {
     private fun runAudioTrack(buffer: ShortArray, sampleRate: Int) {
         var track: AudioTrack? = null
         try {
+            val minBufSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+            val bufferSizeBytes = maxOf(buffer.size * 2, if (minBufSize > 0) minBufSize else 2048)
+
             track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
                 .setAudioFormat(
@@ -146,20 +154,26 @@ object SoundEffects {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(buffer.size * 2)
+                .setBufferSizeInBytes(bufferSizeBytes)
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .build()
 
-            track.write(buffer, 0, buffer.size)
-            track.play()
-            Thread.sleep((buffer.size.toFloat() / sampleRate * 1000).toLong() + 20)
-        } catch (_: Exception) {
-            // Ignore if audio hardware is occupied or unavailable
+            if (track.state == AudioTrack.STATE_INITIALIZED) {
+                track.write(buffer, 0, buffer.size)
+                track.play()
+                val sleepDuration = (buffer.size.toFloat() / sampleRate * 1000).toLong() + 15
+                Thread.sleep(sleepDuration)
+            }
+        } catch (e: Throwable) {
+            // Emulators or headless environments without audio hardware gracefully continue without crashing
+            Log.v(TAG, "Audio synthesis unavailable: ${e.message}")
         } finally {
             try {
-                track?.stop()
+                if (track?.state == AudioTrack.STATE_INITIALIZED) {
+                    track.stop()
+                }
                 track?.release()
-            } catch (_: Exception) {}
+            } catch (_: Throwable) {}
         }
     }
 }

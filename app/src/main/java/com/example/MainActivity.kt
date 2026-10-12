@@ -10,6 +10,8 @@ import com.example.ui.theme.PuzzlePopTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val dbService = com.example.data.DatabaseService(this)
+        com.example.ads.MobileAdsService.getInstance().initialize(this, dbService)
         com.example.ads.AdMobManager.initialize(this)
         enableEdgeToEdge()
         setContent {
