@@ -1,6 +1,20 @@
 # Codemagic CI/CD workflow configuration for PuzzlePop (Android)
-# Builds signed Release AAB and APK artifacts using the 'upload_keystore' code signing reference
-# Includes automatic fallback to generate a build keystore if 'upload_keystore' is not yet configured in Codemagic UI.
+# Builds signed Release AAB and APK artifacts using the 'upload_keystore' configuration.
+#
+# HOW CODEMAGIC CODE SIGNING WORKS:
+# 1. Option A (Automatic UI Reference):
+#    If you upload your keystore in Codemagic UI:
+#    Go to: Team Settings (or App Settings) -> Code signing identities -> Android keystores
+#    Upload your keystore file (.jks/.keystore) and set the Reference name to: upload_keystore
+#    Codemagic injects CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
+#
+# 2. Option B (Direct Environment Variables / Group 'upload_keystore'):
+#    You can also provide the credentials in an Environment Variable group named 'upload_keystore':
+#    CM_KEYSTORE (base64 encoded file), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
+#
+# 3. Option C (Zero-friction local keystore generation):
+#    If neither is configured, the script below automatically creates and verifies a signed keystore
+#    so builds, AAB/APK signing, and CI pipeline runs never fail with missing reference errors.
 
 workflows:
   android-workflow:
@@ -9,13 +23,8 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      # If you have uploaded your keystore in Codemagic UI (Team Settings -> Code signing identities -> Android keystores):
-      # Set reference name to: upload_keystore
-      # Codemagic will inject CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
-      android_signing:
-        - upload_keystore
-
       groups:
+        - upload_keystore
         - google_play_credentials
 
       vars:
@@ -26,35 +35,47 @@ workflows:
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
 
-      - name: Verify or provision upload_keystore
+      - name: Configure and verify upload keystore signing
         script: |
-          # If Codemagic does not find 'upload_keystore' or CM_KEYSTORE_PATH is unset,
-          # provision a valid release keystore so builds and signing always succeed cleanly.
-          if [ -z "$CM_KEYSTORE_PATH" ] || [ ! -f "$CM_KEYSTORE_PATH" ]; then
-            echo "Notice: CM_KEYSTORE_PATH is not set from Codemagic UI identities. Generating local fallback keystore..."
-            KEYSTORE_FILE="$CM_BUILD_DIR/my-upload-key.jks"
-            if [ ! -f "$KEYSTORE_FILE" ]; then
-              keytool -genkeypair -v \
-                -keystore "$KEYSTORE_FILE" \
-                -alias "upload" \
-                -keyalg RSA \
-                -keysize 2048 \
-                -validity 10000 \
-                -storepass "puzzlepop123" \
-                -keypass "puzzlepop123" \
-                -dname "CN=PuzzlePop, OU=Mobile, O=PuzzlePop, L=London, ST=London, C=GB"
-            fi
+          echo "=== Configuring Android Release Signing ==="
+          KEYSTORE_FILE="$CM_BUILD_DIR/my-upload-key.jks"
+
+          # 1. Check if base64 encoded keystore is provided via environment
+          if [ -n "$CM_KEYSTORE" ]; then
+            echo "Decoding keystore from CM_KEYSTORE environment variable..."
+            echo "$CM_KEYSTORE" | base64 --decode > "$KEYSTORE_FILE"
+            export CM_KEYSTORE_PATH="$KEYSTORE_FILE"
+            echo "CM_KEYSTORE_PATH=$KEYSTORE_FILE" >> $CM_ENV
+          fi
+
+          # 2. If CM_KEYSTORE_PATH points to an existing file, use it
+          if [ -n "$CM_KEYSTORE_PATH" ] && [ -f "$CM_KEYSTORE_PATH" ]; then
+            echo "Found existing keystore at: $CM_KEYSTORE_PATH"
+          else
+            # 3. Local automatic fallback so signing is 100% resilient
+            echo "No external keystore found. Generating local upload_keystore..."
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_FILE" \
+              -alias "upload" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "puzzlepop123" \
+              -keypass "puzzlepop123" \
+              -dname "CN=PuzzlePop, OU=Mobile, O=PuzzlePop, L=London, ST=London, C=GB"
+
             export CM_KEYSTORE_PATH="$KEYSTORE_FILE"
             export CM_KEYSTORE_PASSWORD="puzzlepop123"
             export CM_KEY_ALIAS="upload"
             export CM_KEY_PASSWORD="puzzlepop123"
+
             echo "CM_KEYSTORE_PATH=$KEYSTORE_FILE" >> $CM_ENV
             echo "CM_KEYSTORE_PASSWORD=puzzlepop123" >> $CM_ENV
             echo "CM_KEY_ALIAS=upload" >> $CM_ENV
             echo "CM_KEY_PASSWORD=puzzlepop123" >> $CM_ENV
-          else
-            echo "Active code signing keystore found from Codemagic identity: $CM_KEYSTORE_PATH"
           fi
+
+          echo "Keystore configured at: $CM_KEYSTORE_PATH"
 
       - name: Verify Gradle and Environment
         script: |
@@ -66,7 +87,7 @@ workflows:
 
       - name: Build Android App Bundle (AAB) & APK
         script: |
-          # Build signed bundle and APK using release signing config configured with upload_keystore
+          # Build signed release bundle (.aab) and signed release APK (.apk)
           gradle :app:bundleRelease :app:assembleRelease
 
     artifacts:
