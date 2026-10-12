@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with level progression and virtual coin balance",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "avatarEmoji": { "type": "string" },
+        "role": { "type": "string" },
+        "currentLevel": { "type": "integer" },
+        "highestLevelReached": { "type": "integer" },
+        "totalCoins": { "type": "integer" },
+        "totalStars": { "type": "integer" },
+        "matchesCount": { "type": "integer" },
+        "levelsWon": { "type": "integer" },
+        "levelsFailed": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "totalCoins", "currentLevel"]
+    },
+    "CoinTransaction": {
+      "title": "CoinTransaction",
+      "description": "Cryptographic record of virtual coin reward or spend",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "integer" },
+        "levelNumber": { "type": "integer" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "integer" }
+      },
+      "required": ["id", "userId", "amount", "type"]
+    },
+    "Level": {
+      "title": "Level",
+      "description": "Puzzle level definition and rewards",
+      "type": "object",
+      "properties": {
+        "levelNumber": { "type": "integer" },
+        "name": { "type": "string" },
+        "themeName": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "baseReward": { "type": "integer" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["levelNumber", "name", "baseReward"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document containing coin balance and level progress"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "CoinTransaction",
+      "description": "User transaction ledger of earned and spent virtual coins"
+    },
+    "/levels/{levelId}": {
+      "schema": "Level",
+      "description": "Published level catalog"
+    }
+  }
+}

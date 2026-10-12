@@ -1,0 +1,6 @@
+{
+  "name": "PuzzlePop",
+  "description": "A premium 3D cartoon casual tile-matching puzzle game with level progression, virtual coin rewards, and an admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

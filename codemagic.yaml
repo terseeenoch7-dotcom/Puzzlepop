@@ -1,0 +1,53 @@
+# Codemagic CI/CD workflow configuration for PuzzlePop (Android)
+# Builds signed Release AAB and APK artifacts using the 'upload_keystore' code signing reference
+
+workflows:
+  android-workflow:
+    name: Android Build & Release (AAB + APK)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    environment:
+      # Links the code signing keystore uploaded in Codemagic Team settings
+      # (Codemagic UI -> Teams / Apps -> Code signing identities -> Android keystores -> Reference name: upload_keystore)
+      android_signing:
+        - upload_keystore
+
+      groups:
+        - google_play_credentials
+
+      vars:
+        PACKAGE_NAME: "com.aistudio.puzzlepop.zpkxyt"
+
+    scripts:
+      - name: Set up local properties
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Verify Gradle and Environment
+        script: |
+          gradle --version
+
+      - name: Run unit and Robolectric tests
+        script: |
+          gradle :app:testDebugUnitTest
+
+      - name: Build Android App Bundle (AAB) & APK
+        script: |
+          # Build signed bundle and APK using release signing config configured with upload_keystore
+          gradle :app:bundleRelease :app:assembleRelease
+
+    artifacts:
+      - app/build/outputs/bundle/**/*.aab
+      - app/build/outputs/apk/**/*.apk
+      - app/build/outputs/mapping/**/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - chrstphrnch@gmail.com
+          - christopherenoch767@gmail.com
+          - Christophertersee21@gmail.com
+        notify:
+          success: true
+          failure: true
