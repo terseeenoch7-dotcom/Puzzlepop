@@ -1,20 +1,15 @@
 # Codemagic CI/CD workflow configuration for PuzzlePop (Android)
 # Builds signed Release AAB and APK artifacts using the 'upload_keystore' configuration.
 #
-# HOW CODEMAGIC CODE SIGNING WORKS:
-# 1. Option A (Automatic UI Reference):
-#    If you upload your keystore in Codemagic UI:
-#    Go to: Team Settings (or App Settings) -> Code signing identities -> Android keystores
-#    Upload your keystore file (.jks/.keystore) and set the Reference name to: upload_keystore
-#    Codemagic injects CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
-#
-# 2. Option B (Direct Environment Variables / Group 'upload_keystore'):
-#    You can also provide the credentials in an Environment Variable group named 'upload_keystore':
-#    CM_KEYSTORE (base64 encoded file), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
-#
-# 3. Option C (Zero-friction local keystore generation):
-#    If neither is configured, the script below automatically creates and verifies a signed keystore
-#    so builds, AAB/APK signing, and CI pipeline runs never fail with missing reference errors.
+# CODE SIGNING SETUP:
+# 1. Option A (UI Keystore file):
+#    Upload your keystore in Codemagic UI (Android keystores) with reference 'upload_keystore'
+#    or inject CM_KEYSTORE / CM_KEYSTORE_PATH.
+# 2. Option B (Environment Group 'upload_keystore'):
+#    CM_KEYSTORE (base64 encoded), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD.
+# 3. Option C (Automatic resilient local generation):
+#    If no external keystore is provided, the script automatically creates and verifies
+#    a valid upload keystore so builds and AAB/APK signing never fail with missing reference errors.
 
 workflows:
   android-workflow:
@@ -34,6 +29,32 @@ workflows:
       - name: Set up local properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Set up Gradle 9.3.1
+        script: |
+          echo "=== Setting up Gradle 9.3.1 for AGP 9.1.1 ==="
+          GRADLE_VERSION="9.3.1"
+          GRADLE_DIR="/tmp/gradle-$GRADLE_VERSION"
+
+          CURRENT_GRADLE_VERSION=$(gradle --version 2>/dev/null | grep -E '^Gradle [0-9.]+' | head -n 1 | awk '{print $2}' || echo "none")
+          echo "Current system Gradle version: $CURRENT_GRADLE_VERSION"
+
+          if [ "$CURRENT_GRADLE_VERSION" != "$GRADLE_VERSION" ]; then
+            if [ ! -d "$GRADLE_DIR/bin" ]; then
+              echo "Downloading Gradle $GRADLE_VERSION distribution..."
+              curl -sSL --retry 3 "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o "/tmp/gradle-${GRADLE_VERSION}-bin.zip"
+              unzip -q -o "/tmp/gradle-${GRADLE_VERSION}-bin.zip" -d "/tmp"
+            fi
+
+            echo "Configuring Gradle $GRADLE_VERSION on PATH and /usr/local/bin..."
+            sudo ln -sf "$GRADLE_DIR/bin/gradle" /usr/local/bin/gradle || true
+            export PATH="$GRADLE_DIR/bin:$PATH"
+            echo "export PATH=$GRADLE_DIR/bin:\$PATH" >> $CM_ENV
+            echo "PATH=$GRADLE_DIR/bin:$PATH" >> $CM_ENV
+          fi
+
+          echo "Active Gradle version for build:"
+          gradle --version
 
       - name: Configure and verify upload keystore signing
         script: |
@@ -77,16 +98,14 @@ workflows:
 
           echo "Keystore configured at: $CM_KEYSTORE_PATH"
 
-      - name: Verify Gradle and Environment
-        script: |
-          gradle --version
-
       - name: Run unit and Robolectric tests
         script: |
+          [ -d "/tmp/gradle-9.3.1/bin" ] && export PATH="/tmp/gradle-9.3.1/bin:$PATH"
           gradle :app:testDebugUnitTest
 
       - name: Build Android App Bundle (AAB) & APK
         script: |
+          [ -d "/tmp/gradle-9.3.1/bin" ] && export PATH="/tmp/gradle-9.3.1/bin:$PATH"
           # Build signed release bundle (.aab) and signed release APK (.apk)
           gradle :app:bundleRelease :app:assembleRelease
 
