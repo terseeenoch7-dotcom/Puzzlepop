@@ -95,8 +95,14 @@ interface MissionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(missions: List<MissionEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(mission: MissionEntity)
+
     @Update
     suspend fun update(mission: MissionEntity)
+
+    @Query("DELETE FROM missions WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
 
 @Dao
@@ -115,6 +121,12 @@ interface AdminDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAnnouncement(announcement: AnnouncementEntity)
+
+    @Query("DELETE FROM announcements WHERE title = :title")
+    suspend fun deleteAnnouncementByTitle(title: String)
+
+    @Query("DELETE FROM announcements WHERE id = :id")
+    suspend fun deleteAnnouncementById(id: Int)
 
     @Query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 50")
     fun getAuditLogsFlow(): Flow<List<AdminAuditLogEntity>>

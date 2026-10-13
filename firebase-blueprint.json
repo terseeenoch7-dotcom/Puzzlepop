@@ -46,9 +46,72 @@
         "themeName": { "type": "string" },
         "difficulty": { "type": "string" },
         "baseReward": { "type": "integer" },
-        "isActive": { "type": "boolean" }
+        "bonusReward": { "type": "integer" },
+        "timeLimitSeconds": { "type": "integer" },
+        "trayCapacity": { "type": "integer" },
+        "tilesJson": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "highStars": { "type": "integer" },
+        "isCompleted": { "type": "boolean" },
+        "updatedAt": { "type": "integer" }
       },
       "required": ["levelNumber", "name", "baseReward"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "In-app broadcast announcements published by administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "dateString": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "integer" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "content"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Daily quests and admin-created tasks synchronized across all devices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "targetProgress": { "type": "integer" },
+        "rewardCoins": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "integer" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "rewardCoins", "targetProgress"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Global game economy and configuration settings",
+      "type": "object",
+      "properties": {
+        "configKey": { "type": "string" },
+        "configValue": { "type": "string" },
+        "updatedAt": { "type": "integer" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["configKey", "configValue"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Admin activity audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "adminName": { "type": "string" },
+        "actionType": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "adminName", "actionType"]
     }
   },
   "firestore": {
@@ -62,7 +125,23 @@
     },
     "/levels/{levelId}": {
       "schema": "Level",
-      "description": "Published level catalog"
+      "description": "Published puzzle level catalog synchronized across all player devices"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Admin published broadcast announcements synchronized in real-time"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Admin created tasks and daily quests synchronized across all devices"
+    },
+    "/admin_configs/{configKey}": {
+      "schema": "AdminConfig",
+      "description": "Global game economy parameters and configurations"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Administrative actions and security event log"
     }
   }
 }

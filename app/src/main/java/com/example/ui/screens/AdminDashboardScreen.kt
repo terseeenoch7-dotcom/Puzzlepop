@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -27,9 +28,13 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Task
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -39,6 +44,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -58,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,6 +75,7 @@ import com.example.data.AppDatabase
 import com.example.data.GameRepository
 import com.example.data.entity.AdminAuditLogEntity
 import com.example.data.entity.LevelEntity
+import com.example.data.entity.MissionEntity
 import com.example.game.engine.TileEngine
 import com.example.game.model.LevelData
 import com.example.game.model.LevelDifficulty
@@ -83,20 +92,34 @@ fun AdminDashboardScreen(
     onTestLevel: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     val allLevels by repository.getAllLevelsFlow().collectAsState(initial = emptyList())
     val allUsers by repository.getAllUsersFlow().collectAsState(initial = emptyList())
     val allTransactions by repository.getAllTransactionsFlow().collectAsState(initial = emptyList())
+    val allMissions by repository.getMissionsFlow().collectAsState(initial = emptyList())
     val auditLogs by repository.getAuditLogsFlow().collectAsState(initial = emptyList())
     val adminConfigs by repository.getAdminConfigsFlow().collectAsState(initial = emptyList())
+    val syncStatus by repository.syncStatus.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Overview", "Levels", "Economy", "Announcements", "Audit Log")
+    val tabTitles = listOf("Overview", "Levels", "Tasks", "Economy", "Announcements", "Audit Log")
 
-    // State for level editor dialog
+    // Dialog States
     var showCreateLevelDialog by remember { mutableStateOf(false) }
     var showAiGeneratorDialog by remember { mutableStateOf(false) }
     var showGrantCoinsDialog by remember { mutableStateOf(false) }
+    var showCreateTaskDialog by remember { mutableStateOf(false) }
+    var actionStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    fun showFeedback(msg: String) {
+        actionStatusMessage = msg
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
 
     BackHandler {
         onNavigateBack()
@@ -122,46 +145,79 @@ fun AdminDashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = onNavigateBack,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.15f))
-                        .testTag("admin_back_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .testTag("admin_back_button")
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = Color(0xFFFBBF24),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Admin Control Center",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
                         )
                     }
-                    Text(
-                        text = "PuzzlePop Engine • Role: Super Admin",
-                        fontSize = 11.sp,
-                        color = Color(0xFF38BDF8)
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Admin Control Center",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+                        Text(
+                            text = "PuzzlePop Central Engine • Real-Time Cloud Sync",
+                            fontSize = 11.sp,
+                            color = Color(0xFF38BDF8)
+                        )
+                    }
+                }
+
+                // Cloud Status Pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (syncStatus.isCloudConnected) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFFF59E0B).copy(alpha = 0.2f),
+                    modifier = Modifier.border(
+                        1.dp,
+                        if (syncStatus.isCloudConnected) Color(0xFF10B981) else Color(0xFFF59E0B),
+                        RoundedCornerShape(12.dp)
                     )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (syncStatus.isCloudConnected) Icons.Default.CloudDone else Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            tint = if (syncStatus.isCloudConnected) Color(0xFF34D399) else Color(0xFFFBBF24),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (syncStatus.isCloudConnected) "Cloud Active" else "Offline",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (syncStatus.isCloudConnected) Color(0xFF6EE7B7) else Color(0xFFFDE047)
+                        )
+                    }
                 }
             }
 
@@ -196,9 +252,12 @@ fun AdminDashboardScreen(
             ) {
                 when (selectedTabIndex) {
                     0 -> AdminOverviewTab(
+                        repository = repository,
                         allUsers = allUsers,
                         allLevels = allLevels,
-                        allTransactions = allTransactions
+                        allTransactions = allTransactions,
+                        allMissions = allMissions,
+                        onActionFeedback = { showFeedback(it) }
                     )
                     1 -> AdminLevelsTab(
                         levels = allLevels,
@@ -207,30 +266,50 @@ fun AdminDashboardScreen(
                         onAiGenerate = { showAiGeneratorDialog = true },
                         onToggleActive = { lvlNum, active ->
                             coroutineScope.launch {
-                                repository.adminToggleLevelActive(lvlNum, active, "Admin")
+                                val res = repository.adminToggleLevelActive(lvlNum, active, "Admin")
+                                showFeedback(res.getOrDefault("Updated level $lvlNum"))
                             }
                         }
                     )
-                    2 -> AdminEconomyTab(
+                    2 -> AdminTasksTab(
+                        tasks = allMissions,
+                        onCreateTask = { showCreateTaskDialog = true },
+                        onDeleteTask = { taskId ->
+                            coroutineScope.launch {
+                                val res = repository.adminDeleteTask(taskId, "Admin")
+                                showFeedback(res.getOrDefault("Deleted task"))
+                            }
+                        }
+                    )
+                    3 -> AdminEconomyTab(
                         configs = adminConfigs,
                         allTransactions = allTransactions,
                         allUsers = allUsers,
                         onUpdateDefaultReward = { newReward ->
                             coroutineScope.launch {
-                                repository.adminUpdateDefaultReward(newReward, "Admin")
+                                val res = repository.adminUpdateDefaultReward(newReward, "Admin")
+                                showFeedback(res.getOrDefault("Updated reward"))
                             }
                         },
                         onOpenGrantCoins = { showGrantCoinsDialog = true }
                     )
-                    3 -> AdminAnnouncementsTab(
-                        repository = repository
+                    4 -> AdminAnnouncementsTab(
+                        repository = repository,
+                        onActionFeedback = { showFeedback(it) }
                     )
-                    4 -> AdminAuditLogsTab(
+                    5 -> AdminAuditLogsTab(
                         logs = auditLogs
                     )
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+        )
 
         // --- AI LEVEL GENERATOR DIALOG ---
         if (showAiGeneratorDialog) {
@@ -252,7 +331,7 @@ fun AdminDashboardScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Uses Gemini 3.5 Flash to automatically compose themed, balanced multi-layer puzzle layouts with valid triplets.",
+                            text = "Generates multi-layer puzzle layouts with valid triplet combinations, then synchronizes to Cloud Firestore.",
                             fontSize = 12.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -317,8 +396,10 @@ fun AdminDashboardScreen(
                                         tiles = gen.tiles,
                                         isActive = true
                                     )
-                                    repository.adminSaveLevel(levelData, "Gemini AI")
-                                    generatedMessage = "Successfully created Level $newLevelNumber: ${gen.title} with ${gen.tiles.size} tiles!"
+                                    val saveRes = repository.adminSaveLevel(levelData, "Gemini AI")
+                                    val msg = "Created Level $newLevelNumber: ${gen.title} (Synced to Cloud ☁️)"
+                                    generatedMessage = msg
+                                    showFeedback(msg)
                                 }
                             }
                         }
@@ -374,16 +455,101 @@ fun AdminDashboardScreen(
                                 val reward = baseRewardText.toIntOrNull() ?: 5
                                 val gen = TileEngine.generateLevel(nextLvl, themeName, LevelDifficulty.MEDIUM, baseReward = reward)
                                 val finalLevel = gen.copy(name = levelName)
-                                repository.adminSaveLevel(finalLevel, "Admin")
+                                val res = repository.adminSaveLevel(finalLevel, "Admin")
+                                showFeedback(res.getOrDefault("Level $nextLvl published & synced"))
                                 showCreateLevelDialog = false
                             }
                         }
                     ) {
-                        Text("Create", fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                        Text("Publish Level", fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreateLevelDialog = false }) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                }
+            )
+        }
+
+        // --- CREATE TASK DIALOG (Admin Tasks Feature) ---
+        if (showCreateTaskDialog) {
+            var taskTitle by remember { mutableStateOf("") }
+            var taskDescription by remember { mutableStateOf("") }
+            var targetProgressText by remember { mutableStateOf("10") }
+            var rewardCoinsText by remember { mutableStateOf("25") }
+
+            AlertDialog(
+                onDismissRequest = { showCreateTaskDialog = false },
+                containerColor = Color(0xFF1E1B4B),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Task, contentDescription = null, tint = Color(0xFF38BDF8))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Create In-App Task", fontWeight = FontWeight.Bold, color = Color(0xFFFEF08A))
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Admin tasks automatically synchronize across all player devices in real time.",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+
+                        OutlinedTextField(
+                            value = taskTitle,
+                            onValueChange = { taskTitle = it },
+                            label = { Text("Task Title (e.g. Tile Striker)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = taskDescription,
+                            onValueChange = { taskDescription = it },
+                            label = { Text("Description (e.g. Match 15 Fruit tiles)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = targetProgressText,
+                                onValueChange = { targetProgressText = it },
+                                label = { Text("Target Goal") },
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = rewardCoinsText,
+                                onValueChange = { rewardCoinsText = it },
+                                label = { Text("Coin Reward") },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (taskTitle.isNotBlank()) {
+                                coroutineScope.launch {
+                                    val target = targetProgressText.toIntOrNull() ?: 1
+                                    val reward = rewardCoinsText.toIntOrNull() ?: 10
+                                    val res = repository.adminCreateTask(
+                                        title = taskTitle.trim(),
+                                        description = taskDescription.trim(),
+                                        targetProgress = target,
+                                        rewardCoins = reward,
+                                        adminName = "Admin"
+                                    )
+                                    showFeedback(res.getOrDefault("Task created and synced to Cloud ☁️"))
+                                    showCreateTaskDialog = false
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Create & Sync", fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCreateTaskDialog = false }) {
                         Text("Cancel", color = Color.Gray)
                     }
                 }
@@ -422,7 +588,8 @@ fun AdminDashboardScreen(
                         onClick = {
                             coroutineScope.launch {
                                 val amt = coinAmountText.toIntOrNull() ?: 50
-                                repository.adminGrantCoins(selectedUser, amt, grantReason, "Admin")
+                                val res = repository.adminGrantCoins(selectedUser, amt, grantReason, "Admin")
+                                showFeedback(res.getOrDefault("Granted $amt coins"))
                                 showGrantCoinsDialog = false
                             }
                         }
@@ -440,41 +607,107 @@ fun AdminDashboardScreen(
     }
 }
 
+// ==========================================
+// Sub-Tabs
+// ==========================================
+
 @Composable
 private fun AdminOverviewTab(
+    repository: GameRepository,
     allUsers: List<com.example.data.entity.UserAccountEntity>,
     allLevels: List<LevelEntity>,
-    allTransactions: List<com.example.data.entity.CoinTransactionEntity>
+    allTransactions: List<com.example.data.entity.CoinTransactionEntity>,
+    allMissions: List<MissionEntity>,
+    onActionFeedback: (String) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    var isSeeding by remember { mutableStateOf(false) }
+
     val totalCoinsAwarded = allTransactions.filter { it.amount > 0 }.sumOf { it.amount }
     val totalCoinsSpent = allTransactions.filter { it.amount < 0 }.sumOf { -it.amount }
-    val totalWon = allUsers.sumOf { it.levelsWon }
-    val totalFailed = allUsers.sumOf { it.levelsFailed }
-    val failRate = if (totalWon + totalFailed > 0) (totalFailed * 100) / (totalWon + totalFailed) else 0
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text(text = "System Analytics & Overview", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
-        }
+            // Cloud Synchronization Card
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudDone, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Cross-Device Cloud Sync", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.2f)
+                        ) {
+                            Text("Real-Time", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6EE7B7), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
 
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminMetricCard(title = "Total Users", value = "${allUsers.size}", icon = "👥", modifier = Modifier.weight(1f))
-                AdminMetricCard(title = "Active Levels", value = "${allLevels.filter { it.isActive }.size}", icon = "🗺️", modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Changes saved in this admin dashboard are broadcast to Cloud Firestore and received immediately by all connected player devices.",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.75f),
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Cartoon3DButton(
+                        text = if (isSeeding) "Seeding Cloud..." else "SEED 30 LEVELS TO CLOUD",
+                        icon = "☁️",
+                        enabled = !isSeeding,
+                        onClick = {
+                            coroutineScope.launch {
+                                isSeeding = true
+                                val res = repository.seedInitialDataToCloud("Admin")
+                                isSeeding = false
+                                if (res.isSuccess) {
+                                    onActionFeedback(res.getOrDefault("Successfully seeded levels to Cloud!"))
+                                } else {
+                                    onActionFeedback("Seed error: ${res.exceptionOrNull()?.message}")
+                                }
+                            }
+                        },
+                        containerColor = Color(0xFF3B82F6),
+                        shadowColor = Color(0xFF1D4ED8),
+                        height = 42.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminMetricCard(title = "Coins Awarded", value = "+$totalCoinsAwarded", icon = "🪙", modifier = Modifier.weight(1f))
-                AdminMetricCard(title = "Coins Spent", value = "-$totalCoinsSpent", icon = "⚡", modifier = Modifier.weight(1f))
+                AdminStatMetric(title = "Total Users", value = "${allUsers.size}", icon = "👥", modifier = Modifier.weight(1f))
+                AdminStatMetric(title = "Catalog Levels", value = "${allLevels.size}", icon = "🧩", modifier = Modifier.weight(1f))
             }
         }
 
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminMetricCard(title = "Stages Cleared", value = "$totalWon", icon = "🏆", modifier = Modifier.weight(1f))
-                AdminMetricCard(title = "Failure Rate", value = "$failRate%", icon = "📉", modifier = Modifier.weight(1f))
+                AdminStatMetric(title = "Active Tasks", value = "${allMissions.size}", icon = "🎯", modifier = Modifier.weight(1f))
+                AdminStatMetric(title = "Transactions", value = "${allTransactions.size}", icon = "📜", modifier = Modifier.weight(1f))
+            }
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AdminStatMetric(title = "Coins Awarded", value = "$totalCoinsAwarded 🪙", icon = "🎁", modifier = Modifier.weight(1f))
+                AdminStatMetric(title = "Coins Spent", value = "$totalCoinsSpent 🪙", icon = "🛒", modifier = Modifier.weight(1f))
             }
         }
     }
@@ -495,7 +728,8 @@ private fun AdminLevelsTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Manage Levels (${levels.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                Text(text = "Puzzle Level Catalog (${levels.size})", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+
                 Row {
                     Surface(
                         onClick = onAiGenerate,
@@ -509,7 +743,7 @@ private fun AdminLevelsTab(
                         ) {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFDE047), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Gemini AI Studio", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Gemini AI", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
 
@@ -582,6 +816,137 @@ private fun AdminLevelsTab(
     }
 }
 
+/**
+ * Tasks Page where admin can create, view, and manage in-app tasks.
+ */
+@Composable
+private fun AdminTasksTab(
+    tasks: List<MissionEntity>,
+    onCreateTask: () -> Unit,
+    onDeleteTask: (String) -> Unit
+) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Synchronized Tasks (${tasks.size})",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Created tasks appear instantly on user devices",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                }
+
+                Surface(
+                    onClick = onCreateTask,
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF0EA5E9),
+                    modifier = Modifier.testTag("admin_create_task_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Create Task", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        if (tasks.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1E293B).copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("No Tasks Yet", fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Click 'Create Task' above to publish a task for players", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                    }
+                }
+            }
+        } else {
+            items(tasks) { task ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.fillMaxWidth().testTag("admin_task_card_${task.id}")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = task.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFFFEF08A)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFF10B981).copy(alpha = 0.2f)
+                                ) {
+                                    Text(
+                                        text = "+${task.rewardCoins} 🪙",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF6EE7B7),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = task.description,
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Target Goal: ${task.targetProgress} completions",
+                                fontSize = 11.sp,
+                                color = Color(0xFF38BDF8)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onDeleteTask(task.id) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Task",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AdminEconomyTab(
     configs: List<com.example.data.entity.AdminConfigEntity>,
@@ -606,7 +971,7 @@ private fun AdminEconomyTab(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(text = "Default Reward Per Completed Level", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
-                    Text(text = "Configurable baseline coins credited upon finishing any level.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                    Text(text = "Configurable baseline coins credited upon finishing any level. Synchronized across devices.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
@@ -617,7 +982,7 @@ private fun AdminEconomyTab(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Cartoon3DButton(
-                            text = "Save Reward",
+                            text = "Save & Sync",
                             onClick = {
                                 val num = rewardInput.toIntOrNull() ?: 5
                                 onUpdateDefaultReward(num)
@@ -675,7 +1040,8 @@ private fun BoosterCostRow(name: String, cost: Int) {
 
 @Composable
 private fun AdminAnnouncementsTab(
-    repository: GameRepository
+    repository: GameRepository,
+    onActionFeedback: (String) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
     val announcements by repository.getAnnouncementsFlow().collectAsState(initial = emptyList())
@@ -684,7 +1050,7 @@ private fun AdminAnnouncementsTab(
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text(text = "Create In-App Announcement", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+            Text(text = "Broadcast Announcement", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value = newTitle,
@@ -701,11 +1067,12 @@ private fun AdminAnnouncementsTab(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Cartoon3DButton(
-                text = "PUBLISH ANNOUNCEMENT",
+                text = "PUBLISH & SYNC TO ALL DEVICES",
                 onClick = {
                     if (newTitle.isNotBlank()) {
                         coroutineScope.launch {
-                            repository.adminCreateAnnouncement(newTitle.trim(), newContent.trim(), "Admin")
+                            val res = repository.adminCreateAnnouncement(newTitle.trim(), newContent.trim(), "Admin")
+                            onActionFeedback(res.getOrDefault("Announcement broadcasted ☁️"))
                             newTitle = ""
                             newContent = ""
                         }
@@ -729,9 +1096,26 @@ private fun AdminAnnouncementsTab(
                 color = Color(0xFF1E293B),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text(text = a.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFFEF08A))
-                    Text(text = a.content, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                Row(
+                    modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = a.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFFEF08A))
+                        Text(text = a.content, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                    }
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                val res = repository.adminDeleteAnnouncement(a.title, "Admin")
+                                onActionFeedback(res.getOrDefault("Announcement deleted"))
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                    }
                 }
             }
         }
@@ -750,26 +1134,29 @@ private fun AdminAuditLogsTab(
         }
 
         items(logs) { log ->
-            val dateStr = remember(log.timestamp) { dateFormat.format(Date(log.timestamp)) }
             Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = Color(0xFF1E293B),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "📝", fontSize = 16.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = log.actionType, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF38BDF8))
+                            Text(text = "[${log.actionType}]", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF38BDF8))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "by ${log.adminName} • $dateStr", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            Text(text = "by ${log.adminName}", fontSize = 11.sp, color = Color(0xFFFEF08A))
                         }
-                        Text(text = log.details, fontSize = 11.sp, color = Color.White.copy(alpha = 0.85f))
+                        Text(text = log.details, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
                     }
+                    Text(
+                        text = dateFormat.format(Date(log.timestamp)),
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
                 }
             }
         }
@@ -777,7 +1164,7 @@ private fun AdminAuditLogsTab(
 }
 
 @Composable
-private fun AdminMetricCard(
+private fun AdminStatMetric(
     title: String,
     value: String,
     icon: String,
@@ -786,19 +1173,16 @@ private fun AdminMetricCard(
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = Color(0xFF1E293B),
-        modifier = modifier.border(1.dp, Color(0xFF475569).copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+        modifier = modifier
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = title, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                Text(text = icon, fontSize = 16.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = icon, fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = title, fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFEF08A))
+            Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
         }
     }
 }
